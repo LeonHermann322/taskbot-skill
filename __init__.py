@@ -31,19 +31,24 @@ class Taskbot(MycroftSkill):
     @intent_handler(IntentBuilder('deny').require('Deny'))
     def handle_deny(self, message):
         points = self.getScore()
-        self.speak(f"""Service denied, your score is too low. 
-        Currently at {points} points.
-        Solve some tasks to increase your score.
-        """)
+        answer = self.get_response('serviceDenied')
+        if self.voc_match(answer, 'yes', self.lang):
+            self.askMathTask()
+        elif self.voc_match(answer, 'no', self.lang):
+            self.speak("okay, loser")
 
     @intent_handler(IntentBuilder('task').require('Task'))
     def handle_task(self, message):
+        self.askMathTask()
+
+    def askMathTask(self):
         answer = self.get_response('askMathTask')
         if self.voc_match(answer, 'yes', self.lang):
-            self.speak("Your score has been increased")
+            self.speak("Your answer is correct. Your score has been increased")
+            self.setScore(self.getScore() + 5)
         else:
             self.speak("Fuck you the answer is wrong")
-
+            self.setScore(self.getScore() - 5)
 
 def create_skill():
     return Taskbot()
