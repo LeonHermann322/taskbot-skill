@@ -1,14 +1,14 @@
-import shutil
-
-from numpy import imag
-from mycroft import MycroftSkill, intent_handler
+from datetime import date, timedelta, datetime
 from adapt.intent import IntentBuilder
+from mycroft import MycroftSkill, intent_handler
 import os
 import random
-from PIL import Image
 import requests
 import time
 import subprocess
+from flair.models import TextClassifier
+from flair.data import Sentence
+
 class Taskbot(MycroftSkill):
     def __init__(self):
         MycroftSkill.__init__(self)
@@ -21,6 +21,54 @@ class Taskbot(MycroftSkill):
             os.mkdir(self.labeling_folder)
 
         self.animal_dataset = "/opt/mycroft/skills/taskbot-skill/animal_dataset/raw-img"
+        self.utterances = "./utterances.txt"
+        self.sentiments = "./sentiments.txt"
+
+        self.classifier = TextClassifier.load('en-sentiment')
+
+        self.sentiment_score = 0
+
+    def initialize(self):
+        self.schedule_repeating_event(self.check_utterances, datetime.now(), 50, name='utterances')
+
+    def check_utterances(self):
+        with open(self.utterances) as file:
+            lines = file.readlines()
+        lines.reverse()
+        dialog_list = []
+        now_time = datetime.now()
+        current_dialog = ""
+        current_dialog_time = datetime.strptime(lines[1].split(',')[1], "%d.%m.%Y %H:%M:%S")
+        if now_time - timedelta(seconds=60) > current_dialog_time:
+            self.log.info("Last utterance too long ago")
+            return
+        for line in lines:
+            line_arr = line.split(',')
+            utterance_time = datetime.strptime(line_arr[1], "%d.%m.%Y %H:%M:%S")
+            if current_dialog_time - timedelta(seconds=15)  <= utterance_time:
+                current_dialog = line_arr[0] + ". " + current_dialog
+            else:
+                if now_time - timedelta(seconds=60) > utterance_time:
+                    break
+                dialog_list.append(current_dialog)
+                current_dialog = line_arr[0]
+                current_dialog_time = utterance_time
+
+        dialog_analysis = []
+        sentiment_file = open(self.sentiments, "a")
+        for dialog in dialog_list:
+            sentence = Sentence(dialog)
+            self.classifier.predict(sentence)
+            dialog_analysis.append(sentence.labels) 
+
+            if "NEGATIVE" in str(sentence.labels[0]):
+                self.sentiment_score -= 1
+            else:
+                self.sentiment_score += 1
+
+            sentiment_file.write(dialog + "," + str(sentence.labels) + '\n')
+        sentiment_file.close()
+        self.log.info(self.sentiment_score)
 
     def getScore(self):
         scoreFile = open(self.scoreFile, "r")
