@@ -1,17 +1,24 @@
 from datetime import date, timedelta, datetime
+
+import dotenv
 from adapt.intent import IntentBuilder
 from mycroft import MycroftSkill, intent_handler
+from mycroft.audio import wait_while_speaking
 import os
 import random
 import requests
 import time
 import subprocess
+import openai
+from dotenv import load_dotenv
 from flair.models import TextClassifier
 from flair.data import Sentence
 
 class Taskbot(MycroftSkill):
     def __init__(self):
         MycroftSkill.__init__(self)
+        load_dotenv()
+
         self.scoreFile = "./scoreFile.txt"
         if not os.path.exists(self.scoreFile):
             self.setScore(1100)
@@ -27,6 +34,8 @@ class Taskbot(MycroftSkill):
         self.classifier = TextClassifier.load('en-sentiment')
 
         self.sentiment_score = 0
+
+        openai.api_key = os.getenv("OPENAI_API_KEY")
 
     def initialize(self):
         self.schedule_repeating_event(self.check_utterances, datetime.now(), 50, name='utterances')
@@ -97,9 +106,20 @@ class Taskbot(MycroftSkill):
     
     @intent_handler(IntentBuilder('task').require('Task'))
     def handle_task(self, message):
-        tasks = [self.classify_task, self.verify_task]
+        tasks = [self.voice_task]#self.classify_task, self.verify_task, 
         task = random.choice(tasks)
         task(message)
+
+    @intent_handler(IntentBuilder('noise').require('Noise'))
+    def handle_noise(self, message):
+        self.log.info("peter")
+        response = openai.Completion.create(engine="text-davinci-001", prompt="Write a statement that it is too loud or too noisy. Or tell me to be quiet. And maybe add a threat that there will be consequences.", temperature=0.7)
+        self.speak(response["choices"][0]["text"])
+        wait_while_speaking()
+
+    def voice_task(self, message):
+        response = openai.Completion.create(engine="text-davinci-001", prompt="Write something angry.", temperature=0.9)
+        self.speak(response["choices"][0]["text"])
 
     def verify_task(self, message):
         animal_list = ["dog", "elephant", "cat", "chicken"]
