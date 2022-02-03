@@ -21,10 +21,12 @@ class Taskbot(MycroftSkill):
 
         self.scoreFile = "./scoreFile.txt"
         if not os.path.exists(self.scoreFile):
+            self.log.info("## scoreFile created")
             self.setScore(1100)
 
         self.labeling_folder = "/tmp/random_pictures"
         if not os.path.exists(self.labeling_folder):
+            self.log.info("## labeling folder created")
             os.mkdir(self.labeling_folder)
 
         self.animal_dataset = "/opt/mycroft/skills/taskbot-skill/animal_dataset/raw-img"
@@ -49,7 +51,7 @@ class Taskbot(MycroftSkill):
         current_dialog = ""
         current_dialog_time = datetime.strptime(lines[1].split(',')[1], "%d.%m.%Y %H:%M:%S")
         if now_time - timedelta(seconds=60) > current_dialog_time:
-            self.log.info("Last utterance too long ago")
+            self.log.info("##\t\tupdating sentiment : last utterance too long ago")
             return
         for line in lines:
             line_arr = line.split(',')
@@ -65,17 +67,19 @@ class Taskbot(MycroftSkill):
 
         dialog_analysis = []
         sentiment_file = open(self.sentiments, "a")
+        prev_sentiment = self.sentiment_score
         for dialog in dialog_list:
             sentence = Sentence(dialog)
             self.classifier.predict(sentence)
             dialog_analysis.append(sentence.labels) 
-
+            
             if "NEGATIVE" in str(sentence.labels[0]):
                 self.sentiment_score -= 1
             else:
                 self.sentiment_score += 1
 
             sentiment_file.write(dialog + "," + str(sentence.labels) + '\n')
+            self.log.info(f"##\t\tupdating sentiment : {prev_sentiment} --> {self.sentiment_score}")
         sentiment_file.close()
         self.log.info(self.sentiment_score)
 
@@ -106,15 +110,17 @@ class Taskbot(MycroftSkill):
     
     @intent_handler(IntentBuilder('task').require('Task'))
     def handle_task(self, message):
-        tasks = [self.voice_task]#self.classify_task, self.verify_task, 
+        tasks = [self.voice_task, self.classify_task, self.verify_task] 
         task = random.choice(tasks)
         task(message)
 
     @intent_handler(IntentBuilder('noise').require('Noise'))
     def handle_noise(self, message):
-        self.log.info("peter")
-        response = openai.Completion.create(engine="text-davinci-001", prompt="Write a statement that it is too loud or too noisy. Or tell me to be quiet. And maybe add a threat that there will be consequences.", temperature=0.7)
-        self.speak(response["choices"][0]["text"])
+        self.log.info("##\t\thigh noise detected")
+        response = openai.Completion.create(engine="text-davinci-001", prompt="Write a statement that it is too loud or too noisy. Or tell me to be quiet. And maybe add a threat that there will be consequences.", temperature=0.7, max_tokens=60)
+        for entry in response["choices"]:
+            text = entry["text"]
+            self.speak(text)
         wait_while_speaking()
 
     def voice_task(self, message):
@@ -122,6 +128,7 @@ class Taskbot(MycroftSkill):
         self.speak(response["choices"][0]["text"])
 
     def verify_task(self, message):
+        self.log.info("##\t\texecuting verify task")
         animal_list = ["dog", "elephant", "cat", "chicken"]
         current_animal = random.choice(animal_list)
         folder_path = os.path.join(self.animal_dataset, current_animal)
@@ -132,12 +139,15 @@ class Taskbot(MycroftSkill):
         viewer = subprocess.Popen(['eog', picture_path])
         answer = self.get_response("What animal do you see ?")
         viewer.terminate()
+        score = self.getScore()
         if answer == current_animal:
             self.speak("You are correct. Score increased")
             self.setScore(self.getScore() + 5)
+            self.log.info(f"##\t\tupdated score : {score} --> {score + 5}")
         else:
             self.speak(f"Are you kidding me? This clearly was a {current_animal}. Your Score has been decreased")
             self.setScore(self.getScore() - 20)
+            self.log.info(f"##\t\tupdated score : {score} --> {score - 20}")
 
     def download_save_image(self, curr_time):
         path = "https://picsum.photos/800/480.jpg"
@@ -151,6 +161,7 @@ class Taskbot(MycroftSkill):
         return file_path
         
     def classify_task(self, message):
+        self.log.info("##\t\texecuting classify task")
         t = time.localtime()
         current_time = time.strftime("%Y%m%d%H%M%S", t)
         file_path = self.download_save_image(current_time)
@@ -160,7 +171,9 @@ class Taskbot(MycroftSkill):
         if answer:
             self.speak("Thank you for your work!")
             viewer.terminate()
-            self.setScore(self.getScore() + 5)
+            score = self.getScore()
+            self.setScore(score + 5)
+            self.log.info(f"##\t\tupdated score : {score} --> {score + 5}")
         else:
             self.speak("I would like an answer please!")
             return
