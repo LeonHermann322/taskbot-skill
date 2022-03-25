@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 from flair.models import TextClassifier
 from flair.data import Sentence
 from mycroft.util import record
+from cloning import MycroftClone
 
 class Taskbot(MycroftSkill):
     def __init__(self):
