@@ -4,6 +4,7 @@ import dotenv
 from adapt.intent import IntentBuilder
 from mycroft import MycroftSkill, intent_handler
 from mycroft.audio import wait_while_speaking
+from mycroft.skills.audioservice import AudioService
 import os
 import random
 import requests
@@ -13,8 +14,8 @@ import openai
 from dotenv import load_dotenv
 from flair.models import TextClassifier
 from flair.data import Sentence
-from mycroft.util import record
-from cloning import MycroftClone
+from mycroft.util import record, play_wav
+from cloning.mycroft_voice import MycroftClone
 
 class Taskbot(MycroftSkill):
     def __init__(self):
@@ -43,6 +44,7 @@ class Taskbot(MycroftSkill):
 
     def initialize(self):
         self.schedule_repeating_event(self.check_utterances, datetime.now(), 50, name='utterances')
+        self.audio_service = AudioService(self.bus)
 
     def check_utterances(self):
         with open(self.utterances) as file:
@@ -154,7 +156,9 @@ class Taskbot(MycroftSkill):
         response = openai.Completion.create(engine="text-davinci-001", prompt="Write a long sentence about a grasshopper.", temperature=0.9, max_tokens=30)
         self.speak_dialog(f"Repeat after me: {response['choices'][0]['text']}", wait=True)
         now_time = datetime.now()
-        record(f"/tmp/voice_{now_time}.wav", 10, 16000, 1)
+        wait_while_speaking()
+        self.log.info("now recording")
+        record(f"/tmp/voice_clone.wav", 5, 16000, 1)
 
     def verify_task(self, message):
         self.log.info("executing verify task")
@@ -226,5 +230,6 @@ class Taskbot(MycroftSkill):
         self.log.info("trying to play cloned voice")
         play_wav('./cloning/wav_files/file.wav')
 
+        
 def create_skill():
     return Taskbot()
