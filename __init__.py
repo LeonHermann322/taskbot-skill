@@ -111,21 +111,46 @@ class Taskbot(MycroftSkill):
     
     @intent_handler(IntentBuilder('task').require('Task'))
     def handle_task(self, message):
-        tasks = [self.voice_task]#, self.classify_task, self.verify_task] 
+        tasks = [self.voice_task, self.classify_task, self.verify_task] 
         task = random.choice(tasks)
         task(message)
 
     @intent_handler(IntentBuilder('noise').require('Noise'))
     def handle_noise(self, message):
         self.log.info("high noise detected")
-        response = openai.Completion.create(engine="text-davinci-001", prompt="Write a statement that it is too loud or too noisy. Or tell me to be quiet. And maybe add a threat that there will be consequences.", temperature=0.7, max_tokens=60)
-        for entry in response["choices"]:
-            text = entry["text"]
-            self.speak(text)
-        wait_while_speaking()
+        mood = self.sentiment_score > 0 
+        response = ''
+        if mood:
+            response = openai.Completion.create(
+                engine="text-davinci-001", 
+                prompt="Write a statement that it is too loud or too noisy. Or politely ask me to be quiet.", 
+                temperature=0.7, max_tokens=60
+            )
+            for entry in response["choices"]:
+                text = entry["text"]
+                self.speak(text, wait= True)
+            wait_while_speaking()
+        else:
+            response = openai.Completion.create(
+                engine="text-davinci-001", 
+                prompt="Write a negative message to me.", 
+                temperature=1.0, max_tokens=60
+            )
+
+            text = ""
+            for entry in response["choices"]:
+                text += " " + entry["text"]
+
+            clone = MycroftClone()
+            clone.synthesize(text,"/tmp/voice_clone.wav")
+            clone.vocode()
+            clone.save_audio_file(clone.wav, 16000)
+            self.speak("Please be quiet or i have to send following voice message to your mother!", wait=True)
+            wait_while_speaking()
+            play_wav('./cloning/wav_files/file.wav')
 
     def voice_task(self, message):
-        response = openai.Completion.create(engine="text-davinci-001", prompt="Write a long sentence about a grasshopper.", temperature=0.9)
+        response = openai.Completion.create(engine="text-davinci-001", prompt="Write a long sentence about a grasshopper.", temperature=0.9, max_tokens=30)
         self.speak_dialog(f"Repeat after me: {response['choices'][0]['text']}", wait=True)
         now_time = datetime.now()
         record(f"/tmp/voice_{now_time}.wav", 10, 16000, 1)
@@ -183,6 +208,22 @@ class Taskbot(MycroftSkill):
         
         with open(self.labeling_folder + "/labels.csv", 'a') as label_file:
             label_file.write(f"{current_time}.jpg,{answer}\n")
+    
+    @intent_handler(IntentBuilder('clone').require('Clone'))
+    def handle_clone(self, message):
+        """debug function"""
+        self.log.info("trying to clone")
+        clone = MycroftClone()
+        clone.synthesize("The green grasshopper is new on this land","/tmp/voice_clone.wav")
+        clone.vocode()
+        clone.save_audio_file(clone.wav, 16000)
+        self.speak("cloning")
+
+    @intent_handler(IntentBuilder('replay').require('Replay'))
+    def handle_replay(self, message):
+        """debug function"""
+        self.log.info("trying to play cloned voice")
+        play_wav('./cloning/wav_files/file.wav')
 
 def create_skill():
     return Taskbot()
