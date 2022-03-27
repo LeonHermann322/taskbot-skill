@@ -85,7 +85,6 @@ class Taskbot(MycroftSkill):
             sentiment_file.write(dialog + "," + str(sentence.labels) + '\n')
             self.log.info(f"updating sentiment : {prev_sentiment} --> {self.sentiment_score}")
         sentiment_file.close()
-        self.log.info(self.sentiment_score)
 
     def getScore(self):
         scoreFile = open(self.scoreFile, "r")
@@ -114,7 +113,7 @@ class Taskbot(MycroftSkill):
     
     @intent_handler(IntentBuilder('task').require('Task'))
     def handle_task(self, message):
-        tasks = [self.voice_task]#, self.classify_task, self.verify_task] 
+        tasks = [self.voice_task, self.classify_task, self.verify_task] 
         task = random.choice(tasks)
         task(message)
 
