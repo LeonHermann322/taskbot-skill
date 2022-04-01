@@ -1,6 +1,4 @@
 from datetime import date, timedelta, datetime
-
-import dotenv
 from adapt.intent import IntentBuilder
 from mycroft import MycroftSkill, intent_handler
 from mycroft.audio import wait_while_speaking
@@ -36,6 +34,9 @@ class Taskbot(MycroftSkill):
         self.utterances = "./utterances.txt"
         self.sentiments = "./sentiments.txt"
 
+        if not os.path.exists(self.utterances):
+            os.mknod(self.utterances)
+
         self.classifier = TextClassifier.load('en-sentiment')
 
         self.sentiment_score = 0
@@ -47,45 +48,46 @@ class Taskbot(MycroftSkill):
         self.audio_service = AudioService(self.bus)
 
     def check_utterances(self):
-        with open(self.utterances) as file:
+        with open(self.utterances, "r", os.O_NONBLOCK) as file:
             lines = file.readlines()
-        lines.reverse()
-        dialog_list = []
-        now_time = datetime.now()
-        current_dialog = ""
-        current_dialog_time = datetime.strptime(lines[1].split(',')[1], "%d.%m.%Y %H:%M:%S")
-        if now_time - timedelta(seconds=60) > current_dialog_time:
-            self.log.info("updating sentiment : last utterance too long ago")
-            return
-        for line in lines:
-            line_arr = line.split(',')
-            utterance_time = datetime.strptime(line_arr[1], "%d.%m.%Y %H:%M:%S")
-            if current_dialog_time - timedelta(seconds=15)  <= utterance_time:
-                current_dialog = line_arr[0] + ". " + current_dialog
-            else:
-                if now_time - timedelta(seconds=60) > utterance_time:
-                    break
-                dialog_list.append(current_dialog)
-                current_dialog = line_arr[0]
+        if lines:
+            lines.reverse()
+            dialog_list = []
+            now_time = datetime.now()
+            current_dialog = ""
+            current_dialog_time = datetime.strptime(lines[0].split(',')[1], "%d.%m.%Y %H:%M:%S")
+            if now_time - timedelta(seconds=60) > current_dialog_time:
+                self.log.info("updating sentiment : last utterance too long ago")
+                return
+            for line in lines:
+                line_arr = line.split(',')
+                utterance_time = datetime.strptime(line_arr[1], "%d.%m.%Y %H:%M:%S")
+                if current_dialog_time - timedelta(seconds=15)  <= utterance_time:
+                    current_dialog = line_arr[0] + ". " + current_dialog
+                else:
+                    dialog_list.append(current_dialog)
+                    if now_time - timedelta(seconds=50) > utterance_time:
+                        break
+                    current_dialog = line_arr[0]
                 current_dialog_time = utterance_time
 
-        dialog_analysis = []
-        sentiment_file = open(self.sentiments, "a")
-        prev_sentiment = self.sentiment_score
-        for dialog in dialog_list:
-            sentence = Sentence(dialog)
-            self.classifier.predict(sentence)
-            dialog_analysis.append(sentence.labels) 
-            
-            if "NEGATIVE" in str(sentence.labels[0]):
-                self.sentiment_score -= 1
-            else:
-                self.sentiment_score += 1
+            dialog_analysis = []
+            sentiment_file = open(self.sentiments, "a")
+            prev_sentiment = self.sentiment_score
+            for dialog in dialog_list:
+                sentence = Sentence(dialog)
+                self.classifier.predict(sentence)
+                dialog_analysis.append(sentence.labels) 
+                
+                if "NEGATIVE" in str(sentence.labels[0]):
+                    self.sentiment_score -= 1
+                else:
+                    self.sentiment_score += 1
 
-            sentiment_file.write(dialog + "," + str(sentence.labels) + '\n')
-            self.log.info(f"updating sentiment : {prev_sentiment} --> {self.sentiment_score}")
-        sentiment_file.close()
-        self.log.info(self.sentiment_score)
+                sentiment_file.write(dialog + "," + str(sentence.labels) + '\n')
+                self.log.info(f"updating sentiment : {prev_sentiment} --> {self.sentiment_score}")
+            sentiment_file.close()
+            self.log.info(self.sentiment_score)
 
     def getScore(self):
         scoreFile = open(self.scoreFile, "r")
